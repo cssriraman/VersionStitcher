@@ -1,7 +1,5 @@
 ﻿namespace VersionStitcher.Information
 {
-    using LibGit2Sharp;
-
     public class GitInformation : BuildInformation
     {
         public string BranchName { get; set; }

@@ -4,8 +4,11 @@
     using System.Collections.Generic;
     using System.IO;
     using System.Linq;
-    using LibGit;
-    using LibGit2Sharp;
+    using NGit;
+    using NGit.Api;
+    using NGit.Errors;
+    using NGit.Storage.File;
+    using Sharpen;
 
     public class InformationProvider
     {
@@ -29,68 +32,38 @@
 
         private GitInformation GetGitInformation(string projectPath, string solutionPath)
         {
-            CheckNativeBinaries();
-            using (var repository = FindGitRepository(projectPath, solutionPath))
-            {
-                if (repository == null)
-                    return null;
+            var repository = FindGitRepository(projectPath, solutionPath);
+            if (repository == null)
+                return null;
 
-                var gitInformation = new GitInformation();
-                var currentBranch = repository.Head;
-                gitInformation.BranchName = currentBranch.Name;
-                gitInformation.BranchRemoteName = currentBranch.Remote?.Name;
-                var latestCommit = currentBranch.Commits.First();
-                gitInformation.CommitID = latestCommit.Id.Sha;
-                gitInformation.CommitShortID = latestCommit.Id.Sha.Substring(0, 8);
-                gitInformation.CommitMessage = latestCommit.Message.Trim();
-                gitInformation.CommitAuthor = latestCommit.Author.ToString();
-                var repositoryStatus = repository.RetrieveStatus();
-                gitInformation.IsDirty = repositoryStatus.IsDirty;
-                gitInformation.IsDirtyLiteral = repositoryStatus.IsDirty ? "dirty" : "";
-                FillBuildInformation(gitInformation);
-                return gitInformation;
-            }
+            var gitInformation = new GitInformation();
+            var branches = repository.BranchList().Call();
+
+            //gitInformation.BranchName = currentBranch.;
+            //gitInformation.BranchRemoteName = currentBranch.Remote?.Name;
+            //var latestCommit = currentBranch.Commits.First();
+            //gitInformation.CommitID = latestCommit.Id.Sha;
+            //gitInformation.CommitShortID = latestCommit.Id.Sha.Substring(0, 8);
+            //gitInformation.CommitMessage = latestCommit.Message.Trim();
+            //gitInformation.CommitAuthor = latestCommit.Author.ToString();
+            var repositoryStatus = repository.Status().Call();
+            gitInformation.IsDirty = !repositoryStatus.IsClean();
+            gitInformation.IsDirtyLiteral = !repositoryStatus.IsClean() ? "dirty" : "";
+            FillBuildInformation(gitInformation);
+            return gitInformation;
         }
 
-        private void CheckNativeBinaries()
-        {
-            var thisAssembly = GetType().Assembly;
-            var thisDirectory = Path.GetDirectoryName(thisAssembly.Location);
-            var nativeBinariesDirectory = Path.Combine(thisDirectory, "NativeBinaries");
-            if (!Directory.Exists(nativeBinariesDirectory))
-            {
-                Directory.CreateDirectory(nativeBinariesDirectory);
-                var ns = typeof(NativeBinariesRoot).Namespace;
-                foreach (var n in thisAssembly.GetManifestResourceNames())
-                {
-                    if (n.StartsWith(ns))
-                    {
-                        var name = n.Substring(ns.Length + 1);
-                        var parts = name.Split(new[] { '.' }, name.Count(c => c == '.'));
-                        var subDirectory = nativeBinariesDirectory;
-                        foreach (var subDirectoryPart in parts.Take(parts.Length - 1))
-                        {
-                            subDirectory = Path.Combine(subDirectory, subDirectoryPart);
-                            if (!Directory.Exists(subDirectory))
-                                Directory.CreateDirectory(subDirectory);
-                        }
-                        var filePath = Path.Combine(subDirectory, parts.Last());
-                        using (var fs = File.Create(filePath))
-                            thisAssembly.GetManifestResourceStream(n).CopyTo(fs);
-                    }
-                }
-            }
-        }
-
-        private static Repository FindGitRepository(string projectPath, string solutionPath)
+        private static Git FindGitRepository(string projectPath, string solutionPath)
         {
             foreach (var path in GetPaths(projectPath, solutionPath))
             {
                 try
                 {
-                    return new Repository(path);
+                    return  Git.Open(path);
                 }
                 catch (RepositoryNotFoundException) { }
+                catch (FileNotFoundException) { }
+                catch (IOException) { }
             }
             return null;
         }
